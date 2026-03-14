@@ -1,0 +1,8 @@
+.env
+config/settings.yaml
+config/gmail_token.json
+config/ticktick_token.json
+credentials.json
+__pycache__/
+*.pyc
+.venv/
