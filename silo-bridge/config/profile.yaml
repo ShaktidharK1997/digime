@@ -1,0 +1,24 @@
+name: Shakti
+
+dietary:
+  vegetarian: false
+  restrictions:
+    - no pork
+  allergies: []
+  spice_tolerance: high
+  cuisine_preferences:
+    - Indian
+    - Indian street food
+    - South Asian
+
+preferences:
+  delivery_service: doordash
+  preferred_stores:
+    - target
+    - trader joes
+  task_default_project: Inbox
+
+location:
+  city: Jersey City
+  state: NJ
+  timezone: America/New_York
