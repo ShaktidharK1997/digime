@@ -62,7 +62,7 @@ def _get_gmail_service():
             flow = InstalledAppFlow.from_client_secrets_file(
                 str(CREDENTIALS_PATH), SCOPES
             )
-            creds = flow.run_local_server(port=0)
+            creds = flow.run_local_server(port=8080)
 
         TOKEN_PATH.write_text(creds.to_json())
 

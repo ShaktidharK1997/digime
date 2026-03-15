@@ -6,6 +6,20 @@ A Slack bot that bridges your information silos (Gmail, TickTick, web) using an 
 
 ### 1. Install dependencies
 
+**Using uv (recommended - faster!):**
+
+```bash
+# Install uv if you haven't already
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# Install dependencies from lock file
+cd silo-bridge
+uv sync
+source .venv/bin/activate
+```
+
+**Or using traditional pip:**
+
 ```bash
 cd silo-bridge
 python -m venv .venv
@@ -38,8 +52,9 @@ cp .env.example .env
 1. Create a project in Google Cloud Console
 2. Enable the Gmail API
 3. Create OAuth 2.0 credentials (Desktop app type)
-4. Download `credentials.json` and place it in `silo-bridge/`
-5. On first run, a browser window will open for authorization
+4. Add authorized redirect URI: `http://localhost:8080/`
+5. Download `credentials.json` and place it in `silo-bridge/`
+6. On first run, a browser window will open for authorization
 
 ### 5. TickTick Setup
 
@@ -50,43 +65,7 @@ cp .env.example .env
 
 #### TickTick OAuth Flow
 
-Run this one-time script to get your TickTick access token:
-
-```python
-import httpx, json, time
-from urllib.parse import urlencode
-from http.server import HTTPServer, BaseHTTPRequestHandler
-
-CLIENT_ID = "your_client_id"
-CLIENT_SECRET = "your_client_secret"
-REDIRECT_URI = "http://127.0.0.1:8765/callback"
-
-auth_url = f"https://ticktick.com/oauth/authorize?{urlencode({'client_id': CLIENT_ID, 'redirect_uri': REDIRECT_URI, 'response_type': 'code', 'scope': 'tasks:read tasks:write'})}"
-print(f"Open this URL:\n{auth_url}\n")
-
-code = None
-class Handler(BaseHTTPRequestHandler):
-    def do_GET(self):
-        nonlocal code
-        from urllib.parse import urlparse, parse_qs
-        code = parse_qs(urlparse(self.path).query).get("code", [None])[0]
-        self.send_response(200)
-        self.end_headers()
-        self.wfile.write(b"Done! Close this window.")
-
-HTTPServer(("127.0.0.1", 8765), Handler).handle_request()
-
-resp = httpx.post("https://ticktick.com/oauth/token", data={
-    "grant_type": "authorization_code", "code": code,
-    "client_id": CLIENT_ID, "client_secret": CLIENT_SECRET,
-    "redirect_uri": REDIRECT_URI,
-})
-token = resp.json()
-token["expires_at"] = time.time() + token.get("expires_in", 3600)
-with open("config/ticktick_token.json", "w") as f:
-    json.dump(token, f, indent=2)
-print("Token saved!")
-```
+Run this one-time script to get your TickTick access token : ticktick_oauth_flow.py
 
 ### 6. Run
 
