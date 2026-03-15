@@ -8,6 +8,7 @@ from tools.ticktick_tool import (
 )
 from tools.web_fetch_tool import fetch_url, FETCH_URL_SCHEMA
 from tools.slack_tool import post_slack_message
+from tools.memory_tool import recall_message, RECALL_MESSAGE_SCHEMA
 
 TOOL_SCHEMAS = [
     GMAIL_TOOL_SCHEMA,
@@ -15,6 +16,7 @@ TOOL_SCHEMAS = [
     CREATE_TASK_SCHEMA,
     FETCH_URL_SCHEMA,
     PROFILE_TOOL_SCHEMA,
+    RECALL_MESSAGE_SCHEMA,
 ]
 
 TOOL_DISPATCH = {
@@ -23,4 +25,5 @@ TOOL_DISPATCH = {
     "create_task": create_task,
     "fetch_url": fetch_url,
     "read_profile": read_profile,
+    "recall_message": recall_message,
 }

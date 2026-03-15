@@ -2,14 +2,18 @@
 
 import json
 import os
+import re
 import time
 from datetime import datetime, timedelta
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 import httpx
+import yaml
 
 TICKTICK_BASE = "https://api.ticktick.com/open/v1"
 TOKEN_PATH = Path(__file__).resolve().parent.parent / "config" / "ticktick_token.json"
+PROFILE_PATH = Path(__file__).resolve().parent.parent / "config" / "profile.yaml"
 
 # Cache project list to avoid repeated lookups
 _project_cache: dict[str, str] = {}  # name -> id
@@ -50,7 +54,7 @@ CREATE_TASK_SCHEMA = {
             "title": {"type": "string", "description": "Task title."},
             "due_date": {
                 "type": "string",
-                "description": "Due date in ISO format (YYYY-MM-DD). Optional.",
+                "description": "Due date and optional time in ISO format (YYYY-MM-DD or YYYY-MM-DDTHH:MM:SS). Include time when the user specifies one. Optional.",
             },
             "project": {
                 "type": "string",
@@ -155,6 +159,79 @@ def _resolve_project_id(project_name: str | None) -> str | None:
         if name.lower() == project_name.lower():
             return pid
     return None
+
+
+def _normalize_due_date(due_date: str) -> str:
+    """Normalize various date formats to TickTick's required format.
+
+    Args:
+        due_date: Date string in formats like:
+            - "YYYY-MM-DD" (date only)
+            - "YYYY-MM-DDTHH:MM:SS" (datetime)
+            - "YYYY-MM-DDTHH:MM" (datetime without seconds)
+            - "YYYY-MM-DDTHH:MM:SS.000+0000" (already in TickTick format)
+
+    Returns:
+        Date string in TickTick's required format: "YYYY-MM-DDTHH:MM:SS.000+0000"
+        For date-only inputs, defaults to 09:00:00 in user's timezone (America/New_York).
+    """
+    if not due_date:
+        return due_date
+
+    # If already in TickTick format, return as-is
+    if re.match(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}[+-]\d{4}", due_date):
+        return due_date
+
+    # Load user's timezone from profile
+    user_tz = ZoneInfo("America/New_York")  # default
+    try:
+        with open(PROFILE_PATH) as f:
+            profile = yaml.safe_load(f)
+            tz_name = profile.get("location", {}).get("timezone", "America/New_York")
+            user_tz = ZoneInfo(tz_name)
+    except Exception:
+        pass  # Use default if profile can't be loaded
+
+    # Parse the input date string
+    dt = None
+
+    # Try date-only format: YYYY-MM-DD
+    if re.match(r"^\d{4}-\d{2}-\d{2}$", due_date):
+        # Parse as date, set time to 09:00:00 in user's timezone
+        date_part = datetime.strptime(due_date, "%Y-%m-%d")
+        dt = datetime(
+            date_part.year,
+            date_part.month,
+            date_part.day,
+            9, 0, 0,  # 9:00 AM
+            tzinfo=user_tz
+        )
+
+    # Try datetime formats: YYYY-MM-DDTHH:MM:SS or YYYY-MM-DDTHH:MM
+    elif "T" in due_date:
+        # Remove any existing timezone info for parsing
+        base_date = due_date.split("+")[0].split("-", 3)[-1] if "+" in due_date else due_date.split("Z")[0]
+        base_date = due_date.split("+")[0].split("Z")[0]
+
+        # Try with seconds
+        try:
+            dt_naive = datetime.strptime(base_date, "%Y-%m-%dT%H:%M:%S")
+            dt = dt_naive.replace(tzinfo=user_tz)
+        except ValueError:
+            # Try without seconds
+            try:
+                dt_naive = datetime.strptime(base_date, "%Y-%m-%dT%H:%M")
+                dt = dt_naive.replace(tzinfo=user_tz)
+            except ValueError:
+                pass  # Fall through to return original
+
+    # If we couldn't parse it, return the original string
+    if dt is None:
+        return due_date
+
+    # Convert to UTC and format for TickTick
+    dt_utc = dt.astimezone(ZoneInfo("UTC"))
+    return dt_utc.strftime("%Y-%m-%dT%H:%M:%S.000+0000")
 
 
 def _filter_by_date(tasks: list[dict], date_range: str) -> list[dict]:
@@ -280,7 +357,7 @@ def create_task(
         if project_id:
             task_data["projectId"] = project_id
         if due_date:
-            task_data["dueDate"] = due_date
+            task_data["dueDate"] = _normalize_due_date(due_date)
 
         resp = httpx.post(
             f"{TICKTICK_BASE}/task",
