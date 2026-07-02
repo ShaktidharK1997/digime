@@ -1,5 +1,5 @@
 [project]
-name = "silo-bridge"
+name = "digime"
 version = "0.1.0"
 description = "Personal AI assistant that bridges siloed data sources"
 requires-python = ">=3.12"
