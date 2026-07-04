@@ -1,0 +1,15 @@
+Generate my morning digest. This is a scheduled, proactive check-in — I haven't asked a specific question.
+
+Do the following:
+1. Check my email from the last 24 hours (read_emails, time_range 24h). Look for anything that needs a reply, mentions a deadline or commitment, or is otherwise time-sensitive. Ignore newsletters, promotions, and automated notifications unless they're genuinely urgent.
+2. Check my tasks for today (get_tasks, date_range today) — what's due and what's overdue.
+3. Cross-reference: flag any email commitment or deadline that has no matching task. If you find one, mention it and offer to create the task (call create_task so I get a confirm button).
+
+Then post the digest in this shape, keeping it tight:
+
+*Morning digest — {date}*
+📧 *Email*: 2–4 lines on what actually needs my attention (or "Nothing needs a reply.")
+📋 *Tasks*: due today / overdue (or "Nothing due today.")
+🔗 *Gaps*: email commitments with no task, if any
+
+If a tool fails, include what you could get and note what failed. Total length: aim for under 15 lines.

@@ -9,6 +9,16 @@ logger = logging.getLogger(__name__)
 
 HAIKU_MODEL = "claude-haiku-4-5-20251001"
 
+_client: anthropic.Anthropic | None = None
+
+
+def _get_client() -> anthropic.Anthropic:
+    """Lazy singleton — one client reused across calls."""
+    global _client
+    if _client is None:
+        _client = anthropic.Anthropic()
+    return _client
+
 
 def generate_message_gist(messages_array: list[dict]) -> str:
     """Generate a one-sentence summary of a single exchange (user input + ReAct loop).
@@ -24,7 +34,7 @@ def generate_message_gist(messages_array: list[dict]) -> str:
 
     Example: "Checked Gmail for emails from manager about deadline, found 3 matching emails, no corresponding TickTick task exists"
     """
-    client = anthropic.Anthropic()
+    client = _get_client()
 
     # Convert messages array to a readable format for the summarizer
     context = _format_messages_for_summary(messages_array)
@@ -72,7 +82,7 @@ def generate_conversation_gist(message_gists: list[str]) -> str:
 
     Example: "Reviewed emails about project launch, identified missing tasks, created follow-up task for vendor coordination"
     """
-    client = anthropic.Anthropic()
+    client = _get_client()
 
     # Join message gists with line breaks
     gists_text = "\n".join(f"- {gist}" for gist in message_gists)

@@ -1,0 +1,11 @@
+.git
+.venv
+__pycache__
+*.pyc
+.pytest_cache
+.env
+credentials.json
+config/gmail_token.json
+config/ticktick_token.json
+config/memory.db*
+tests
