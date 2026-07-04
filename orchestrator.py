@@ -120,6 +120,23 @@ def _execute_tool(tool_name: str, tool_input: dict) -> str:
         return json.dumps({"error": f"Tool '{tool_name}' failed: {e}"})
 
 
+def _serialize_content(content) -> list[dict]:
+    """Convert SDK response content blocks into plain dicts.
+
+    Keeps the messages array JSON-serializable (memory persistence does
+    json.dumps on it) and re-sendable to the API. Every block type is
+    preserved — including the server-side web_search result blocks that must
+    be echoed back verbatim when the turn pauses or continues.
+    """
+    blocks = []
+    for block in content:
+        if hasattr(block, "model_dump"):
+            blocks.append(block.model_dump(exclude_none=True, mode="json"))
+        else:
+            blocks.append(block)
+    return blocks
+
+
 def run(
     user_message: str,
     say_func,
@@ -145,7 +162,7 @@ def run(
     messages = [{"role": "user", "content": user_message}]
 
     # Post a brief "thinking" indicator
-    post_slack_message(say_func, "\U0001f50d Robot is roboting..", thread_ts)
+    post_slack_message(say_func, "\U0001f50d Thinking..", thread_ts)
 
     for iteration in range(MAX_ITERATIONS):
         logger.info("Orchestrator iteration %d", iteration + 1)
@@ -166,49 +183,22 @@ def run(
             )
             return
 
-        # Check stop reason
-        if response.stop_reason == "end_turn":
-            # Append final assistant response to messages
-            assistant_content = []
-            for block in response.content:
-                if block.type == "text":
-                    assistant_content.append({"type": "text", "text": block.text})
-            messages.append({"role": "assistant", "content": assistant_content})
+        # Append the assistant's full content — text, client tool_use, and any
+        # server-side web_search blocks (already executed by Anthropic) — so
+        # the conversation stays faithful across iterations.
+        messages.append(
+            {"role": "assistant", "content": _serialize_content(response.content)}
+        )
 
-            # Final text response — extract and post to Slack
-            text_parts = [
-                block.text
-                for block in response.content
-                if block.type == "text"
-            ]
-            final_text = "\n".join(text_parts) if text_parts else "Done."
-            post_slack_message(say_func, final_text, thread_ts)
-
-            # Save message to memory store (async, non-blocking)
-            if conv_id and message_id:
-                _save_message_to_memory(conv_id, message_id, messages)
-
-            return
+        # The server-side web_search tool exhausted its per-turn loop and
+        # paused. Re-send as-is to let Anthropic resume — no extra user
+        # message needed.
+        if response.stop_reason == "pause_turn":
+            continue
 
         if response.stop_reason == "tool_use":
-            # Append the assistant's message (contains tool_use blocks)
-            assistant_content = []
-            for block in response.content:
-                if block.type == "text":
-                    assistant_content.append({"type": "text", "text": block.text})
-                elif block.type == "tool_use":
-                    assistant_content.append(
-                        {
-                            "type": "tool_use",
-                            "id": block.id,
-                            "name": block.name,
-                            "input": block.input,
-                        }
-                    )
-
-            messages.append({"role": "assistant", "content": assistant_content})
-
-            # Execute each tool call and build tool_result messages
+            # Execute only client-side tools. server_tool_use blocks were run
+            # by Anthropic already; their results are in response.content.
             tool_results = []
             for block in response.content:
                 if block.type == "tool_use":
@@ -222,31 +212,29 @@ def run(
                         }
                     )
 
-            messages.append({"role": "user", "content": tool_results})
+            if tool_results:
+                messages.append({"role": "user", "content": tool_results})
+            continue
 
+        # end_turn (or any other terminal stop reason): post the final text.
+        text_parts = [
+            block.text
+            for block in response.content
+            if block.type == "text" and block.text.strip()
+        ]
+        if text_parts:
+            final_text = "\n".join(text_parts)
+        elif response.stop_reason == "end_turn":
+            final_text = "Done."
         else:
-            # Unexpected stop reason
-            # Append whatever we got from the assistant
-            assistant_content = []
-            for block in response.content:
-                if block.type == "text":
-                    assistant_content.append({"type": "text", "text": block.text})
-            if assistant_content:
-                messages.append({"role": "assistant", "content": assistant_content})
+            final_text = "I wasn't able to complete that request."
+        post_slack_message(say_func, final_text, thread_ts)
 
-            text_parts = [
-                block.text
-                for block in response.content
-                if block.type == "text"
-            ]
-            final_text = "\n".join(text_parts) if text_parts else "I wasn't able to complete that request."
-            post_slack_message(say_func, final_text, thread_ts)
+        # Save message to memory store (async, non-blocking)
+        if conv_id and message_id:
+            _save_message_to_memory(conv_id, message_id, messages)
 
-            # Save even incomplete exchanges
-            if conv_id and message_id:
-                _save_message_to_memory(conv_id, message_id, messages)
-
-            return
+        return
 
     # Hit iteration cap
     post_slack_message(
