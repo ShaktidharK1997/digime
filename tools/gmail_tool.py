@@ -3,12 +3,11 @@
 import base64
 import json
 import re
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
-from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
 
 SCOPES = ["https://www.googleapis.com/auth/gmail.readonly"]
@@ -45,36 +44,50 @@ GMAIL_TOOL_SCHEMA = {
 
 
 def _get_gmail_service():
-    """Authenticate and return a Gmail API service instance."""
-    creds = None
-    if TOKEN_PATH.exists():
-        creds = Credentials.from_authorized_user_file(str(TOKEN_PATH), SCOPES)
+    """Return a Gmail API service instance from the stored token.
 
-    if not creds or not creds.valid:
-        if creds and creds.expired and creds.refresh_token:
-            creds.refresh(Request())
+    Deliberately non-interactive: this runs inside Slack handler threads
+    (possibly on a headless server), so it never opens a browser. If the
+    token is missing or unrefreshable, it raises with instructions to run
+    the one-time setup script.
+    """
+    if not TOKEN_PATH.exists():
+        raise RuntimeError(
+            "Gmail token not found. Run: python gmail_oauth_flow.py "
+            "(see README for setup instructions)."
+        )
+
+    creds = Credentials.from_authorized_user_file(str(TOKEN_PATH), SCOPES)
+
+    if not creds.valid:
+        if creds.expired and creds.refresh_token:
+            try:
+                creds.refresh(Request())
+            except Exception as e:
+                raise RuntimeError(
+                    f"Gmail token refresh failed ({e}). "
+                    "Re-run: python gmail_oauth_flow.py"
+                ) from e
+            TOKEN_PATH.write_text(creds.to_json())
         else:
-            if not CREDENTIALS_PATH.exists():
-                raise FileNotFoundError(
-                    f"Gmail credentials.json not found at {CREDENTIALS_PATH}. "
-                    "Download it from Google Cloud Console."
-                )
-            flow = InstalledAppFlow.from_client_secrets_file(
-                str(CREDENTIALS_PATH), SCOPES
+            raise RuntimeError(
+                "Gmail token is invalid and cannot be refreshed. "
+                "Re-run: python gmail_oauth_flow.py"
             )
-            creds = flow.run_local_server(port=8080)
-
-        TOKEN_PATH.write_text(creds.to_json())
 
     return build("gmail", "v1", credentials=creds)
 
 
 def _time_range_to_after(time_range: str) -> str:
-    """Convert a time range string to a Gmail 'after:' date filter."""
+    """Convert a time range string to a Gmail 'after:' epoch filter.
+
+    Epoch seconds give hour-level precision; the YYYY/MM/DD form only has
+    day granularity, so '24h' would really return up to ~48h of mail.
+    """
     deltas = {"24h": timedelta(hours=24), "48h": timedelta(hours=48), "7d": timedelta(days=7)}
     delta = deltas.get(time_range, timedelta(hours=48))
-    cutoff = datetime.utcnow() - delta
-    return cutoff.strftime("%Y/%m/%d")
+    cutoff = datetime.now(timezone.utc) - delta
+    return str(int(cutoff.timestamp()))
 
 
 def _strip_html(html: str) -> str:
@@ -117,7 +130,7 @@ def read_emails(query: str = "", time_range: str = "48h") -> str:
     """Search Gmail and return matching messages as JSON."""
     try:
         service = _get_gmail_service()
-    except FileNotFoundError as e:
+    except RuntimeError as e:
         return json.dumps({"error": str(e)})
     except Exception as e:
         return json.dumps({"error": f"Gmail auth failed: {e}"})

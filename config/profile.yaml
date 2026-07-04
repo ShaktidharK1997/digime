@@ -22,3 +22,14 @@ location:
   city: Jersey City
   state: NJ
   timezone: America/New_York
+
+# Proactive morning digest, posted to your Slack DM.
+# Requires SLACK_ALLOWED_USER_ID in .env (so the bot knows whose DM to open).
+digest:
+  enabled: true
+  time: "08:00"  # local time, HH:MM (uses location.timezone)
+
+memory:
+  # Threads inactive this many days are auto-summarized and archived.
+  # Set to 0 to disable (then only saying "done" archives a thread).
+  auto_archive_days: 3

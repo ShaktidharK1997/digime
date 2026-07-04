@@ -3,10 +3,15 @@ from tools.gmail_tool import read_emails, GMAIL_TOOL_SCHEMA
 from tools.ticktick_tool import (
     get_tasks,
     create_task,
+    complete_task,
+    update_task,
+    delete_task,
     GET_TASKS_SCHEMA,
     CREATE_TASK_SCHEMA,
+    COMPLETE_TASK_SCHEMA,
+    UPDATE_TASK_SCHEMA,
+    DELETE_TASK_SCHEMA,
 )
-from tools.slack_tool import post_slack_message
 from tools.memory_tool import recall_message, RECALL_MESSAGE_SCHEMA
 
 # Server-side web search — executed by Anthropic, not dispatched locally.
@@ -21,6 +26,9 @@ TOOL_SCHEMAS = [
     GMAIL_TOOL_SCHEMA,
     GET_TASKS_SCHEMA,
     CREATE_TASK_SCHEMA,
+    COMPLETE_TASK_SCHEMA,
+    UPDATE_TASK_SCHEMA,
+    DELETE_TASK_SCHEMA,
     WEB_SEARCH_SCHEMA,
     PROFILE_TOOL_SCHEMA,
     RECALL_MESSAGE_SCHEMA,
@@ -32,6 +40,14 @@ TOOL_DISPATCH = {
     "read_emails": read_emails,
     "get_tasks": get_tasks,
     "create_task": create_task,
+    "complete_task": complete_task,
+    "update_task": update_task,
+    "delete_task": delete_task,
     "read_profile": read_profile,
     "recall_message": recall_message,
 }
+
+# Tools with side effects. The orchestrator never executes these directly —
+# it posts a Slack Confirm/Cancel card and only runs them after the user
+# presses Confirm (see main.py action handlers).
+WRITE_TOOLS = frozenset({"create_task", "complete_task", "update_task", "delete_task"})

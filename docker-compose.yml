@@ -1,0 +1,10 @@
+services:
+  digime:
+    build: .
+    env_file: .env
+    restart: unless-stopped
+    volumes:
+      # OAuth tokens, profile.yaml, and memory.db live here — persist them
+      - ./config:/app/config
+      # Google OAuth client secrets (read-only)
+      - ./credentials.json:/app/credentials.json:ro
